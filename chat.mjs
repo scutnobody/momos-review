@@ -1,3 +1,5 @@
+import { reportScoreMax } from './rubric.mjs';
+
 const validId=/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/;
 const within=(text,max)=>typeof text==='string'&&text.length<=max&&text.trim().length>0;
 
@@ -26,10 +28,24 @@ export async function askReview(report,part,{question,history},invoke){
   }))
  }));
  const annotations=report.annotations.filter(n=>!part||n.partId===part.id).map(n=>({
-  partId:n.partId,itemId:n.itemId,title:n.title,score:n.score,explanation:n.explanation,
+  partId:n.partId,itemId:n.itemId,expert:n.expertLabel,title:n.title,score:n.score,explanation:n.explanation,
   suggestion:n.suggestion,status:n.status,auditReason:n.auditReason,evidenceIds:refs(n)
  }));
- const reply=await invoke({kind:'chat',product:report.product,part,question,history,dimensions,annotations,evidence});
+ const visibleItems=new Set(dimensions.flatMap(d=>d.items.map(i=>i.id)));
+ const ratingSnapshot=r=>({score:r.score,basis:r.basis,evidenceIds:refs(r)});
+ const claimSnapshot=n=>({title:n.title,explanation:n.explanation,conclusion:n.conclusion,suggestion:n.suggestion,evidenceIds:refs(n)});
+ const reviewHistory={
+  ratingRevisions:(report.trace?.scoreRevisions??[]).filter(r=>visibleItems.has(r.id)).map(r=>({
+   itemId:r.id,before:ratingSnapshot(r.before),auditBefore:r.auditBefore,
+   after:ratingSnapshot(r.after),auditAfter:r.auditAfter
+  })),
+  claimRevisions:(report.trace?.claimRevisions??[]).filter(r=>!part||r.before.partId===part.id).map(r=>({
+   itemId:r.before.itemId,partId:r.before.partId,expert:r.before.expert,expertLabel:r.before.expertLabel,
+   before:claimSnapshot(r.before),auditBefore:r.auditBefore,
+   after:claimSnapshot(r.after),auditAfter:r.auditAfter
+  }))
+ };
+ const reply=await invoke({kind:'chat',product:report.product,projectName:report.projectName,part,question,history,scoreMax:reportScoreMax(report),dimensions,annotations,reviewHistory,evidence});
  if(!within(reply?.answer,1500)||!Array.isArray(reply.evidenceIds)||reply.evidenceIds.length>12||reply.evidenceIds.some(id=>!ids.has(id))){
   throw new Error('Agent 回复格式或证据引用无效，请重试。');
  }

@@ -44,7 +44,7 @@ export function setupReviewChat(evidenceList){
     prompts.append(button);
    }
   }
-  status.textContent=error||(!available?'配置 Agent 模型后可使用问答。':!enabled?'完成一次产品评审后可开始问答。':'问答使用当前评审记录，最近 6 轮用于理解追问。');
+  status.textContent=error||(!available?'配置 Agent 模型后可使用问答。':!enabled?'完成一次产品评审后可开始问答。':'问答结合评分、审核和复评记录，最近 6 轮用于理解追问。');
   status.classList.toggle('error',Boolean(error));
  }
 

@@ -1,11 +1,13 @@
 import {demo} from './demo.js';
+import {DIMENSIONS,reportScoreMax} from './rubric.mjs';
 import {setupReviewChat} from './chat.js';
 const el=id=>document.getElementById(id);
 const create=(tag,className,text)=>{const x=document.createElement(tag);if(className)x.className=className;if(text!==undefined)x.textContent=text;return x;};
 const level={risk:'问题',attention:'关注',ok:'表现良好',unknown:'待核验'};
 const auditNames={supported:'有支持',contradicted:'与证据矛盾',insufficient:'信息不足'};
 const evidenceTypes={image:'原图观察',region:'图像区域',description:'用户说明',parameter:'用户声明参数',test:'用户提交测试'};
-const scoreText=score=>score===null?'暂不评分':score+' / 100';
+const itemLabel=item=>/^[AFS]\d$/.test(item.id)?item.id+' '+item.name:item.name;
+const scoreText=score=>score===null?'N/A · 无法判断':score+' / '+reportScoreMax(report);
 function disclosure(title,className){
  const node=create('details',className);
  node.append(create('summary','',title));
@@ -54,14 +56,15 @@ function historyPanel(change,score){
  }
  return details;
 }
-function claimPanel(note){
+function claimPanel(note,partName){
  const article=create('article','claim');
  const item=report.dimensions.find(d=>d.id===note.dimension)?.items?.find(i=>i.id===note.itemId);
  const label=create('div','detail-label');
- label.append(create('span','',(note.expertLabel?note.expertLabel+' · ':'')+(item?.name??note.title)));
+ label.append(create('span','',(note.expertLabel?note.expertLabel+' · ':'')+(item?itemLabel(item):note.title)));
  const verdict=note.status==='demo'?'示例说明':auditNames[note.status];
  label.append(create('span','verdict '+note.status,verdict));
- article.append(label,create('h4','',note.title));
+ article.append(label);
+ if(note.title!==partName)article.append(create('h4','',note.title));
  if(note.score!==undefined)article.append(create('p','claim-score','对应子项 '+scoreText(note.score)));
  article.append(create('p','',note.explanation??'该结论未通过证据审核，已撤回。'));
  if(note.evidence)article.append(create('p','',note.evidence));
@@ -72,10 +75,10 @@ function claimPanel(note){
  if(change)article.append(historyPanel(change,false));
  return article;
 }
-let report=demo, imageSrc='/lamp.svg', selected='joint', view='points', ready=false, file=null, preview='', busy=false;
+let report=demo, imageSrc='/lamp-studio.png', selected='joint', view='points', ready=false, file=null, preview='', busy=false;
 const chat=setupReviewChat(evidenceList);
 el('open-chat').onclick=()=>chat.open();
-const stage=document.querySelector('.stage'), image=el('product-image'), dialog=el('upload-dialog');
+const stage=document.querySelector('.stage'), image=el('product-image');
 function sizeImage(){
  if(!image.naturalWidth||!stage.clientWidth)return;
  const ratio=image.naturalWidth/image.naturalHeight;
@@ -104,7 +107,7 @@ function renderDetail(parts){
  ask.setAttribute('aria-haspopup','dialog');ask.onclick=()=>chat.open(active.id);
  heading.append(create('h3','',active.name),ask);
  target.append(heading);
- for(const note of active.notes)target.append(claimPanel(note));
+ for(const note of active.notes)target.append(claimPanel(note,active.name));
 }
 function select(id){
  selected=id;
@@ -127,7 +130,7 @@ function renderParts(){
   const pin=create('button','pin '+p.severity,n);
   pin.type='button';pin.dataset.part=p.id;pin.title=p.name;pin.setAttribute('aria-label','标注 '+n+' '+p.name);pin.setAttribute('aria-pressed',String(p.id===selected));
   pin.style.left=100*(p.region.x+p.region.w/2)+'%';pin.style.top=100*(p.region.y+p.region.h/2)+'%';
-  pin.onclick=()=>{select(p.id);if(matchMedia('(max-width:800px)').matches)document.querySelector('.inspector').scrollIntoView({block:'start'});};
+  pin.onclick=()=>{select(p.id);if(matchMedia('(max-width:1090px)').matches)document.querySelector('.inspector').scrollIntoView({block:'start'});};
   pins.append(pin);
   const b=create('button','part '+p.severity);
   b.type='button';b.dataset.part=p.id;b.setAttribute('aria-pressed',String(p.id===selected));b.onclick=()=>select(p.id);
@@ -137,64 +140,100 @@ function renderParts(){
  renderDetail(parts);
 }
 function renderScores(){
- const list=el('scores');list.replaceChildren();
+ const list=el('score-cards'),max=reportScoreMax(report);list.replaceChildren();
  for(const d of report.dimensions){
-  const a=create('article','card score-card'),head=create('div'),rating=create('span','score-value'+(d.score===null?' na':''),d.score===null?'证据不足':String(d.score));
-  if(d.score!==null)rating.append(create('small','',' / 100'));
-  head.append(create('h3','',d.label),rating);
-  const bar=create('div','bar'),fill=create('span');fill.style.width=(d.score??0)+'%';bar.append(fill);
-  a.append(head,bar,create('p','',d.basis));
-  for(const item of d.items??[]){
-   const detail=disclosure(item.name+' · '+scoreText(item.score),'rubric-item');
+  const items=d.items??[];
+  const card=create('details','card score-card'),head=create('summary','dimension-summary');
+  const name=create('span','dimension-name'),rating=create('span','score-value'+(d.score===null?' na':''),d.score===null?'N/A':String(d.score));
+  name.append(create('strong','',d.label),create('small','',items.filter(i=>i.score!==null).length+' / '+items.length+' 项已评分'));
+  if(d.score!==null)rating.append(create('small','',' / '+max));
+  const bar=create('span','bar'),fill=create('span');fill.style.width=(100*(d.score??0)/max)+'%';bar.append(fill);
+  bar.setAttribute('aria-hidden','true');
+  const arrow=create('span','dimension-chevron','›');arrow.setAttribute('aria-hidden','true');
+  head.append(name,bar,rating,arrow);
+  const body=create('div','dimension-items');
+  body.append(create('p','',d.basis));
+  for(const item of items){
+   const detail=disclosure(itemLabel(item)+' · '+scoreText(item.score),'rubric-item');
    if(item.audit)detail.append(create('p','verdict '+item.audit.status,auditNames[item.audit.status]+' · '+item.audit.reason));
    detail.append(create('p','',item.basis));
    if(item.evidenceIds?.length)detail.append(evidenceList(item.evidenceIds));
    const scale=disclosure('评分锚点与不可评价条件','anchor-list');
+   if(item.visualEvidence)scale.append(create('p','','观察重点 · '+item.visualEvidence));
    for(const [value,anchor] of Object.entries(item.anchors))scale.append(create('p','',value+' 分 · '+anchor));
-   scale.append(create('p','','暂不评分 · '+item.unassessable));
+   scale.append(create('p','','N/A · '+item.unassessable));
+   if(item.prohibitedInference)scale.append(create('p','','推断限制 · '+item.prohibitedInference));
    detail.append(scale);
    const change=report.trace?.scoreRevisions.find(x=>x.id===item.id);
    if(change)detail.append(historyPanel(change,true));
    for(const note of report.annotations.filter(n=>n.partId===null&&n.itemId===item.id))detail.append(claimPanel(note));
-   a.append(detail);
+   body.append(detail);
   }
-  list.append(a);
+  card.append(head,body);
+  list.append(card);
  }
 }
 function render(){
- el('product').textContent=report.product;
+ const displayName=report.projectName||report.product;
+ el('product').textContent=displayName;
  el('source').textContent=report.source==='demo'?'示例评审':'模型评审';
+ el('score-caption').textContent=(report.source==='demo'?'示例评分':'专用模型评分')+' · 满分 '+reportScoreMax(report);
  el('sample').hidden=report.source==='demo';
  chat.setReview(report);renderParts();renderScores();
 }
-function setView(next){
- view=next;el('workspace').hidden=view==='scores';
+const viewFromUrl=()=>location.hash==='#prepare'?'prepare':'points';
+function setView(next,updateUrl=true){
+ const changed=view!==next;
+ view=next;
+ const targetHash=next==='prepare'?'#prepare':'';
+ const moved=updateUrl&&location.hash!==targetHash;
+ if(moved)history.pushState(null,'',targetHash||location.pathname+location.search);
+ el('prepare-page').hidden=view!=='prepare';
+ el('review-page').hidden=view==='prepare';
+ el('page-crumb').textContent=view==='prepare'?'建立设计':'产品评审';
  for(const b of document.querySelectorAll('[data-view]'))b.setAttribute('aria-pressed',String(b.dataset.view===view));
+ if(!updateUrl&&location.hash==='#scores')requestAnimationFrame(()=>el('scores').scrollIntoView());
+ else if(changed||moved)window.scrollTo(0,0);
  sizeImage();
 }
+window.addEventListener('popstate',()=>setView(viewFromUrl(),false));
 for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>setView(b.dataset.view);
 el('markers-visible').onchange=e=>{el('pins').hidden=!e.target.checked;};
-el('sample').onclick=()=>{report=demo;selected='joint';setImage('/lamp.svg','ARC 01 台灯示意图');setView('points');render();};
+el('sample').onclick=()=>{report=demo;selected='joint';setImage('/lamp-studio.png','ARC 01 台灯示意图');setView('points');render();};
 el('download').onclick=()=>{
  const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
  const a=create('a');a.href=url;a.download='momos-'+(report.source==='demo'?'sample':'review')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
 };
 function status(text,error=false){el('upload-status').textContent=text;el('upload-status').classList.toggle('error',error);}
 async function check(){
- try{const res=await fetch('/api/status');if(!res.ok)throw new Error();ready=(await res.json()).configured;el('connection').classList.toggle('live',ready);el('connection').innerHTML='<i></i> '+(ready?'模型已配置':'示例模式');}
- catch{ready=false;el('connection').textContent='服务未连接';}
- finally{chat.setAvailable(ready);}
+ try{const res=await fetch('/api/status');if(!res.ok)throw new Error();const settings=await res.json();ready=settings.configured;chat.setAvailable(settings.chatConfigured);el('connection').classList.toggle('live',ready);el('connection').innerHTML='<i></i> '+(ready?'模型已配置':'示例模式');}
+ catch{ready=false;chat.setAvailable(false);el('connection').textContent='服务未连接';}
 }
-el('upload').onclick=()=>{status(ready?'开始评审后，图片和填写的资料将发送给已配置的模型服务。':'可预览图片；生成真实评分前需配置项目 .env 并重启。');dialog.showModal();};
-el('close-dialog').onclick=()=>dialog.close();
-dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
+el('upload').onclick=()=>setView('prepare');
+const defaultStatus=()=>ready?'开始评审后，图片和填写的资料将发送给已配置的模型服务。':'可准备资料；发起真实评审前需配置评审所需模型。';
+for(const dimension of DIMENSIONS){
+ for(const item of dimension.items){
+  const label=create('label','focus-option');
+  const option=create('input');option.type='checkbox';option.name='focusItemIds';option.value=item.id;
+  label.append(option,create('span','',itemLabel(item)));
+  el('focus-items').append(label);
+ }
+}
+el('remove-file').onclick=()=>{
+ if(busy)return;
+ URL.revokeObjectURL(preview);file=null;preview='';
+ el('upload-preview').removeAttribute('src');el('upload-preview').hidden=true;
+ el('preview-placeholder').hidden=false;el('remove-file').hidden=true;
+ el('file-label').textContent='等待添加图片';status(defaultStatus());
+};
 function setFile(f){
  if(busy||!f)return;
  if(!['image/png','image/jpeg','image/webp'].includes(f.type)||f.size>6_000_000){status('请选择 6 MB 以内的 JPG、PNG 或 WebP 图片。',true);return;}
  if(preview)URL.revokeObjectURL(preview);
  file=f;preview=URL.createObjectURL(file);
  el('upload-preview').src=preview;el('upload-preview').hidden=false;el('file-label').textContent=file.name;
- status(ready?'开始评审后，图片和填写的资料将发送给已配置的模型服务。':'尚未配置视觉模型，请参阅项目 README。');
+ el('preview-placeholder').hidden=true;el('remove-file').hidden=false;
+ status(defaultStatus());
 }
 el('file').onchange=e=>{setFile(e.target.files[0]);e.target.value='';};
 for(const n of ['dragenter','dragover'])el('drop').addEventListener(n,e=>{e.preventDefault();el('drop').classList.add('drag');});
@@ -214,7 +253,7 @@ function addParameter(){
  const row=create('div','parameter-row');
  for(const [kind,label,max] of [['name','参数名',80],['value','参数值',300]]){
   const field=create('input');field.name=kind;field.maxLength=max;field.placeholder=label;
-  field.setAttribute('aria-label',label);field.required=true;row.append(field);
+  field.setAttribute('aria-label',label);row.append(field);
  }
  const remove=create('button','close','×');remove.type='button';remove.setAttribute('aria-label','移除此参数');
  remove.onclick=()=>{row.remove();el('add-parameter').disabled=false;};
@@ -226,19 +265,28 @@ el('upload-form').onsubmit=async e=>{
  e.preventDefault();if(busy)return;
  if(!file){status('请先选择产品图片。',true);return;}
  if(!ready){status('尚未配置模型。请参阅 README 并重启本地服务。',true);return;}
- busy=true;el('submit').disabled=true;el('file').disabled=true;el('close-dialog').disabled=true;
+ const parameters=[...parameterRows.children].map(row=>({
+  name:row.querySelector('[name=name]').value.trim(),value:row.querySelector('[name=value]').value.trim()
+ }));
+ if(parameters.some(p=>!p.name||!p.value)){
+  parameterRows.closest('details').open=true;
+  status('请补全每个产品参数的名称和值，或移除空白参数。',true);
+  return;
+ }
+ const focusItemIds=[...el('focus-items').querySelectorAll('input:checked')].map(input=>input.value);
+ busy=true;el('submit').disabled=true;el('prepare-fields').disabled=true;
  status('正在评分、定位部位并核查证据，可能需要几分钟。');
  try{
   const dataUrl=await normalizedImage(file).catch(()=>{throw new Error('无法读取这张图片，请重新导出为 JPG 或 PNG。');});
-  const parameters=[...parameterRows.children].map(row=>({
-   name:row.querySelector('[name=name]').value,value:row.querySelector('[name=value]').value
-  }));
-  const res=await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image:dataUrl,brief:el('brief').value,parameters,testResults:el('test-results').value})});
+  const payload={image:dataUrl,projectName:el('project-name').value,brief:el('brief').value,
+   designGoals:el('design-goals').value,focusItemIds,parameters,testResults:el('test-results').value};
+  const res=await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'评审失败。');
   report=data;selected=null;el('markers-visible').checked=true;el('pins').hidden=false;
   setImage(dataUrl,report.product+'产品图');setView('points');render();
-  dialog.close();
+  status(defaultStatus());
  }catch(e){status(e.message||'评审失败，请稍后重试。',true);}
- finally{busy=false;el('submit').disabled=false;el('file').disabled=false;el('close-dialog').disabled=false;}
+ finally{busy=false;el('submit').disabled=false;el('prepare-fields').disabled=false;}
 };
-render();sizeImage();check();
+render();setView(viewFromUrl(),false);
+check().then(()=>{if(!el('upload-status').textContent)status(defaultStatus());});

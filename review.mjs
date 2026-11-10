@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { DIMENSIONS, GROUPS, RUBRIC_VERSION } from './rubric.mjs';
+import { DIMENSIONS, GROUPS, RUBRIC_VERSION, SCORE_MIN, SCORE_MAX } from './rubric.mjs';
 
 const items = new Map(DIMENSIONS.flatMap(d=>d.items.map(item=>[item.id,{...item,dimension:d.id}])));
 const str = (v,n=400)=>typeof v==='string'?v.trim().slice(0,n):'';
 const severity = new Set(['risk','attention','ok','unknown']);
 const statuses = new Set(['supported','contradicted','insufficient']);
+const imageEvidence={id:'IMG',type:'image',label:'原始产品图'};
+const isVisualEvidence=e=>e.type==='image'||e.type==='region';
 
 export function validateInput(value){
  const image=value?.image;
@@ -17,8 +19,13 @@ export function validateInput(value){
  if(!Array.isArray(parameters)||parameters.length>20||parameters.some(p=>!str(p?.name,80)||!str(p?.value,300))){
   throw new Error('请填写有效的参数名和参数值，最多 20 项。');
  }
+ const focusItemIds=value.focusItemIds??[];
+ if(!Array.isArray(focusItemIds)||focusItemIds.length>items.size||focusItemIds.some(id=>!items.has(id))){
+  throw new Error('评审重点包含无效子项。');
+ }
  return {
-  image,brief:str(value.brief,1500),testResults:str(value.testResults,3000),
+  image,projectName:str(value.projectName,80),brief:str(value.brief,1500),
+  designGoals:str(value.designGoals,1500),focusItemIds:[...new Set(focusItemIds)],testResults:str(value.testResults,3000),
   parameters:parameters.map(p=>({name:str(p.name,80),value:str(p.value,300)}))
  };
 }
@@ -47,9 +54,10 @@ function evidenceCatalog(input,parts=[]){
  const paragraphs=(value,prefix,type,label)=>(value??'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean)
   .map((text,index)=>({id:prefix+(index+1),type,label:label+(index+1),text}));
  return [
-  {id:'IMG',type:'image',label:'原始产品图'},
+  imageEvidence,
   ...parts.map(p=>({id:'R:'+p.id,type:'region',label:p.name,partId:p.id,region:p.region})),
   ...paragraphs(input.brief,'D','description','设计说明段落 '),
+  ...paragraphs(input.designGoals,'G','description','设计目标段落 '),
   ...(input.parameters??[]).map((p,i)=>({id:'P'+(i+1),type:'parameter',label:p.name,text:p.value})),
   ...paragraphs(input.testResults,'T','test','用户提交的测试记录段落 ')
  ];
@@ -72,8 +80,8 @@ function exactRows(raw,ids,message){
 
 function parseRatings(raw,ids,evidence){
  return exactRows(raw,ids,'评分模型返回的子项缺失、重复或越权。').map(r=>{
-  if(!(r.score===null||(Number.isInteger(r.score)&&r.score>=0&&r.score<=100))||!str(r.basis)){
-   throw new Error('评分模型返回的子项评分或依据无效。');
+  if(!(r.score===null||(Number.isInteger(r.score)&&r.score>=SCORE_MIN&&r.score<=SCORE_MAX))||!str(r.basis)){
+   throw new Error('评分模型返回的子项评分或依据无效。评分应为 1–5 的整数，证据不足时为 null。');
   }
   return {id:r.id,score:r.score,basis:str(r.basis,650),...refs(r.evidenceIds,evidence)};
  });
@@ -111,14 +119,13 @@ function parseNotes(raw,group,parts,evidence,prior){
 function enforceEvidence(target,verdict,evidence){
  if(verdict.status==='contradicted')return verdict;
  const isClaim=target.itemId!==undefined;
- const item=items.get(target.itemId??target.id);
  const makesAssertion=isClaim?target.conclusion==='finding':target.score!==null;
  const sources=target.evidenceIds.map(id=>evidence.get(id));
  let gateReason='';
- if(target.invalidEvidenceIds.length)gateReason='引用了证据目录中不存在的编号。';
+ if(target.invalidEvidenceIds.length)gateReason='引用了本条评审不可用的证据编号。';
  else if(makesAssertion&&!sources.length)gateReason='结论没有可追溯的证据引用。';
- else if(makesAssertion&&item.requiredEvidence.length&&!sources.some(e=>item.requiredEvidence.includes(e.type))){
-  gateReason='引用未包含子项要求的资料。'+item.unassessable;
+ else if(!isClaim&&makesAssertion&&sources.some(e=>!isVisualEvidence(e))){
+  gateReason='数值评分只能引用原图或图像区域。';
  }else if(isClaim&&makesAssertion&&target.partId&&!sources.some(e=>e.partId===target.partId)){
   gateReason='部位结论没有引用该部位的图像区域。';
  }
@@ -134,7 +141,7 @@ function publishedDimensions(ratings,audits){
     basis:audit.status==='supported'?basis:'评分依据未通过审核，暂缓发布。',evidenceIds,audit};
   });
   const scores=result.filter(i=>i.score!==null).map(i=>i.score);
-  return {...d,items:result,score:scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):null,
+  return {...d,items:result,score:scores.length?Math.round(scores.reduce((a,b)=>a+b,0)*10/scores.length)/10:null,
    basis:'已发布 '+scores.length+' / '+result.length+' 个子项；维度分为已发布子项的等权平均。'};
  });
 }
@@ -142,7 +149,7 @@ function publishedDimensions(ratings,audits){
 export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgress=()=>{}}={}){
  const call=async(kind,data)=>invoke({kind,input,...data});
  onProgress('score');
- const baseEvidence=evidenceCatalog(input);
+ const baseEvidence=[imageEvidence];
  const [first,{parts,status:localizationStatus}]=await Promise.all([
   call('score',{rubric:DIMENSIONS,evidence:baseEvidence}),
   call('locate',{dimensions:DIMENSIONS.map(({id,label})=>({id,label}))})
@@ -159,8 +166,8 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
  const crops=await prepareCrops(input.image,parts);
  const rubricFor=group=>DIMENSIONS.filter(d=>group.dimensions.includes(d.id));
  const partsFor=group=>parts.filter(p=>p.dimensions.some(d=>group.dimensions.includes(d)));
- const modelContext=(partIds)=>({
-  evidence:evidence.filter(e=>e.type!=='region'||partIds.has(e.partId)),
+ const modelContext=(partIds,sources=evidence)=>({
+  evidence:sources.filter(e=>e.type!=='region'||partIds.has(e.partId)),
   images:parts.filter(p=>partIds.has(p.id)&&crops[p.id]).map(p=>({id:'R:'+p.id,url:crops[p.id]}))
  });
  const evidenceFor=targets=>modelContext(new Set(targets.flatMap(t=>[
@@ -181,7 +188,8 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
   const groupParts=partsFor(group);
   const groupRatings=initialRatings.filter(r=>group.dimensions.includes(items.get(r.id).dimension));
   const relevantParts=new Set(groupParts.map(p=>p.id));
-  const result=await call('explain',{group,ratings:groupRatings,parts:groupParts,rubric:rubricFor(group),...modelContext(relevantParts)});
+  const focusItemIds=(input.focusItemIds??[]).filter(id=>group.dimensions.includes(items.get(id).dimension));
+  const result=await call('explain',{group,focusItemIds,ratings:groupRatings,parts:groupParts,rubric:rubricFor(group),...modelContext(relevantParts)});
   return parseNotes(result?.notes,group,groupParts,byEvidence);
  }))).flat();
  if(parts.some(p=>!initialNotes.some(n=>n.partId===p.id)))throw new Error('部位解释不完整，请重试。');
@@ -200,7 +208,8 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
  if(disputedRatings.length){
   const affectedItems=disputedRatings.map(t=>items.get(t.id));
   const affectedDimensions=new Set(affectedItems.map(i=>i.dimension));
-  const context=modelContext(new Set(parts.filter(p=>p.dimensions.some(d=>affectedDimensions.has(d))).map(p=>p.id)));
+  const relatedParts=new Set(parts.filter(p=>p.dimensions.some(d=>affectedDimensions.has(d))).map(p=>p.id));
+  const context=modelContext(relatedParts,evidence.filter(isVisualEvidence));
   const raw=await call('rescore',{targets:disputedRatings,issues:auditReasons(disputedRatings),rubric:affectedItems,...context});
   rerated=parseRatings(raw?.ratings,disputedRatings.map(t=>t.id),new Map(context.evidence.map(e=>[e.id,e])));
   for(const r of rerated)ratings.set(r.id,r);
@@ -230,9 +239,10 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
   return after.map(x=>({id:x.id,before:old.get(x.id),after:x,auditBefore:firstAudit.get(x.id),auditAfter:secondAudit.get(x.id)}));
  };
  return {
-  id:randomUUID(),createdAt:new Date().toISOString(),source:'model',rubricVersion:RUBRIC_VERSION,
+  id:randomUUID(),createdAt:new Date().toISOString(),source:'model',rubricVersion:RUBRIC_VERSION,scoreMax:SCORE_MAX,
   imageHash:createHash('sha256').update(Buffer.from(input.image.split(',')[1],'base64')).digest('hex'),
-  product:str(first.product,65)||'上传产品',dimensions,parts,localization:{status:localizationStatus},evidence,annotations,
+  product:str(first.product,65)||'上传产品',projectName:input.projectName??'',focusItemIds:input.focusItemIds??[],
+  dimensions,parts,localization:{status:localizationStatus},evidence,annotations,
   trace:{initial:{ratings:initialRatings,claims:initialNotes,audits:[...firstAudit.values()]},
    scoreRevisions:revisions(initialRatings,rerated),claimRevisions:revisions(initialNotes,revised)}
  };

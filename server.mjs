@@ -1,14 +1,14 @@
 import http from 'node:http';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { loadEnvFile } from 'node:process';
-import { config,configured,createProvider } from './provider.mjs';
+import { chatConfigured,config,configured,createProvider } from './provider.mjs';
 import { runReview,validateInput } from './review.mjs';
 import { askReview, validateChat } from './chat.mjs';
 import { cropEvidence } from './crops.mjs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 try{loadEnvFile(new URL('./.env',import.meta.url));}catch(e){if(e.code!=='ENOENT')throw e;}
-const c=config(),ready=configured(c);
+const c=config(),ready=configured(c),chatReady=chatConfigured(c);
 const storage=process.env.MOMOS_REVIEW_DIR||fileURLToPath(new URL('./.reviews/',import.meta.url));
 
 async function saveReview(result){
@@ -23,18 +23,20 @@ async function saveReview(result){
   throw new Error('评审记录保存失败，请检查本地评审目录的写入权限。');
  }
 }
-const staticFiles={'/rubric.mjs':['../rubric.mjs','text/javascript; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/chat.js':['chat.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/lamp.svg':['lamp.svg','image/svg+xml'],'/demo.js':['demo.js','text/javascript; charset=utf-8']};
+const staticFiles={'/rubric.mjs':['../rubric.mjs','text/javascript; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/chat.js':['chat.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/lamp.svg':['lamp.svg','image/svg+xml'],'/lamp-studio.png':['lamp-studio.png','image/png'],'/demo.js':['demo.js','text/javascript; charset=utf-8']};
 const send=(res,status,data)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(data));};
 let active=0;
 const server=http.createServer(async(req,res)=>{
  res.setHeader('X-Content-Type-Options','nosniff');
  res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
  const path=(req.url??'').split('?')[0];
- if(req.method==='GET'&&path==='/api/status')return send(res,200,{configured:ready});
+ if(req.method==='GET'&&path==='/api/status')return send(res,200,{configured:ready,chatConfigured:chatReady});
  if(req.method==='POST'&&(path==='/api/review'||path==='/api/chat')){
   const chatting=path==='/api/chat';
   const bodyLimit=chatting?90_000:8_100_000;
-  if(!ready)return send(res,503,{error:'尚未配置视觉模型。请配置项目的 .env 后重启服务。'});
+  if(!(chatting?chatReady:ready))return send(res,503,{error:chatting
+   ?'尚未配置问答模型。请配置项目的 .env 后重启服务。'
+   :'尚未配置评审所需的视觉模型。请配置项目的 .env 后重启服务。'});
   if(req.headers.origin&&req.headers.origin!=='http://'+req.headers.host)return send(res,403,{error:'请从本地评审台提交。'});
   if(!req.headers['content-type']?.startsWith('application/json'))return send(res,415,{error:'请求格式不受支持。'});
   if(active>=2)return send(res,429,{error:'评审服务正忙，请稍后再试。'});
