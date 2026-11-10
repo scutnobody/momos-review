@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+.reviews/
+__pycache__/

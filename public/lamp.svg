@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720">
+<defs>
+ <linearGradient id="metal" x1="0" x2="1" y1="0" y2=".85" gradientUnits="objectBoundingBox"><stop stop-color="#fdf9eb"/><stop offset=".31" stop-color="#e7dfce"/><stop offset=".64" stop-color="#bfb5a2"/><stop offset="1" stop-color="#928875"/></linearGradient>
+ <linearGradient id="stem" x1="0" x2="1"><stop stop-color="#a79c85"/><stop offset=".22" stop-color="#f7efdf"/><stop offset=".57" stop-color="#eee4d1"/><stop offset="1" stop-color="#aaa08d"/></linearGradient>
+ <linearGradient id="cap" x2=".1" y2="1"><stop stop-color="#faf4e4"/><stop offset=".48" stop-color="#eee5d1"/><stop offset="1" stop-color="#bfb39c"/></linearGradient>
+ <linearGradient id="base" x2=".2" y2="1"><stop stop-color="#fbf4e6"/><stop offset=".6" stop-color="#ddd1bc"/><stop offset="1" stop-color="#a99b83"/></linearGradient>
+ <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffdc85" stop-opacity=".37"/><stop offset="1" stop-color="#ffdc85" stop-opacity="0"/></linearGradient>
+ <radialGradient id="shadow"><stop stop-color="#514c3d" stop-opacity=".32"/><stop offset="1" stop-color="#514c3d" stop-opacity="0"/></radialGradient>
+ <radialGradient id="light"><stop stop-color="#fffbe3"/><stop offset=".76" stop-color="#ffe6a6"/><stop offset="1" stop-color="#b69e6e"/></radialGradient>
+ <linearGradient id="dial" x2="1" y2="1"><stop stop-color="#77776c"/><stop offset="1" stop-color="#242720"/></linearGradient>
+ <filter id="soft"><feGaussianBlur stdDeviation="11"/></filter>
+ <filter id="product-shadow" x="-30%" y="-30%" width="170%" height="175%"><feDropShadow dx="9" dy="12" stdDeviation="10" flood-color="#635742" flood-opacity=".15"/></filter>
+</defs>
+<ellipse cx="523" cy="615" rx="280" ry="46" fill="url(#shadow)" filter="url(#soft)"/>
+<path d="M224 245 Q377 278 526 243 L668 560 Q453 627 101 532Z" fill="url(#glow)" filter="url(#soft)"/>
+<g filter="url(#product-shadow)">
+ <path d="M329 569 C331 549 392 529 503 522 C618 515 722 535 727 558 L727 585 C723 610 605 632 478 624 C378 617 327 603 329 584Z" fill="url(#metal)" stroke="#9a8e78" stroke-width="1"/>
+ <path d="M329 569 C334 546 420 525 522 522 C629 518 722 535 727 558 C732 580 643 607 521 609 C412 611 326 591 329 569Z" fill="url(#base)" stroke="#e4dbc9" stroke-width="2"/>
+ <path d="M345 571 C380 590 456 600 521 600 C618 598 694 584 717 564" fill="none" stroke="#fff9ed" stroke-width="2" opacity=".72"/>
+ <ellipse cx="637" cy="550" rx="41" ry="15" fill="#b5a893"/>
+ <ellipse cx="637" cy="547" rx="34" ry="13" fill="url(#cap)" stroke="#b9ad95"/>
+ <path d="M619 547 L615 249 Q615 189 566 173 Q542 164 499 166 L482 133 Q548 122 583 136 Q654 159 656 244 L657 546 C654 557 625 558 619 547Z" fill="url(#stem)" stroke="#a69b85" stroke-width="1.4"/>
+ <path d="M625 540 L624 249 Q622 186 572 165 Q544 153 508 155" fill="none" stroke="#fff8e7" stroke-width="2.4" opacity=".65"/>
+ <path d="M654 266 L655 522" stroke="#8f856f" opacity=".45"/>
+ <path d="M567 172 L530 191 L500 177 L508 139 Q552 132 575 142Z" fill="url(#metal)" stroke="#9c917d"/>
+ <path d="M216 209 C216 191 264 162 366 153 C459 145 523 158 539 178 L542 214 C532 236 459 260 360 265 C265 270 216 251 212 232Z" fill="url(#cap)" stroke="#a99c84" stroke-width="1.5"/>
+ <path d="M212 232 C212 212 274 187 365 180 C452 173 534 185 542 207 C552 233 466 262 360 266 C268 271 208 255 212 232Z" fill="#777064" stroke="#b1a487" stroke-width="2"/>
+ <path d="M225 232 C227 215 287 195 369 188 C456 181 522 190 530 208 C538 228 460 253 362 257 C280 261 222 251 225 232Z" fill="url(#light)"/>
+ <path d="M224 204 C245 184 304 168 369 163 C454 156 513 165 534 181" fill="none" stroke="#fff9ec" stroke-width="2.5"/>
+ <path d="M441 582 C439 571 453 560 472 558 C489 556 506 563 509 572 L509 583 C503 596 447 600 441 582Z" fill="#55544b" stroke="#aaa08c"/>
+ <ellipse cx="475" cy="573" rx="34" ry="15" transform="rotate(-5 475 573)" fill="url(#dial)" stroke="#6c6a5c"/>
+ <path d="M474 568 l4 7" stroke="#e6dac1" stroke-width="2.2" stroke-linecap="round"/>
+ <circle cx="525" cy="582" r="2.6" fill="#d25d3e"/>
+ <path d="M566 593 l29 -4" stroke="#9e9380" stroke-width="1.4" opacity=".45"/>
+</g>
+</svg>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f6f5f0"><title>MOMOS · 工业设计评审台</title>
+<link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="top">
+ <a href="/" class="wordmark" aria-label="MOMOS 首页"><span class="brand-icon"><svg viewBox="0 0 24 24"><path d="M4 17V7l8 6 8-6v10M4 7l8-4 8 4M12 13v8"/></svg></span>MOMOS<span class="brand-divider"></span><span class="brand-label">DESIGN INTELLIGENCE</span></a>
+ <div class="top-right"><span id="connection" class="connection"><i></i> 检查模型连接</span><button id="upload" class="primary"><svg viewBox="0 0 24 24"><path d="M12 19V5m-5 5 5-5 5 5M5 16v4h14v-4"/></svg> 上传产品图</button></div>
+</header>
+<main>
+ <div class="crumb"><span>工作空间</span><b>›</b><span>产品评审</span></div>
+ <section class="heading">
+  <div><div class="eyebrow"><span></span> INDUSTRIAL DESIGN REVIEW</div><h1>产品评审台<span>.</span></h1><p>从整体评分到部位洞察，看清每一项设计判断的依据。</p></div>
+  <div class="heading-meta"><span id="source" class="badge">示例评审</span><span id="product" class="product"></span></div>
+ </section>
+ <div class="toolbar">
+  <div class="tabs"><button data-view="points" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 1v4m0 14v4M1 12h4m14 0h4"/></svg> 部位标注</button><button data-view="scores" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M5 19v-5m7 5V5m7 14v-9M3 22h18"/></svg> 维度评分</button></div>
+  <button id="open-chat" class="text-button" type="button" aria-haspopup="dialog">Agent 问答</button><button id="sample" class="text-button" hidden>查看示例</button><button id="download" class="text-button"><svg viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg> 导出结果</button>
+ </div>
+ <div id="notice" class="notice" role="status" hidden></div>
+ <div id="workspace">
+  <div class="layout">
+   <section class="viewer card" aria-label="产品图与标注">
+    <div class="viewer-top"><span><b>01</b> / 产品视图</span><label class="toggle"><input type="checkbox" id="markers-visible" checked><span></span> 显示标注</label></div>
+    <div class="stage"><div class="viewport" id="viewport"><img id="product-image" src="/lamp.svg" alt="ARC 01 台灯示意图"><div id="pins" class="pins"></div></div></div>
+    <div class="viewer-bottom"><span id="point-count"></span><span class="key"><i class="risk"></i> 问题 <i class="attention"></i> 关注 <i class="ok"></i> 表现良好 <i class="unknown"></i> 待核验</span></div>
+   </section>
+   <aside class="inspector card" aria-label="部位分析">
+    <div class="inspector-head"><div class="eyebrow">02 / PART INSPECTOR</div><h2>部位洞察</h2><p>点击图中标注，查看对应的 Agent 分析。</p></div>
+    <div id="parts"></div>
+    <div id="detail" class="detail" aria-live="polite"></div>
+   </aside>
+  </div>
+ </div>
+ <section class="score-section" id="score-section"><div class="score-head"><div><div class="eyebrow">03 / SCORE PROFILE</div><h2>多维评分</h2></div><p>子项由专用模型评分 · 满分 100</p></div><div id="scores" class="score-grid"></div></section>
+ <footer><span>MOMOS <b>／</b> 工业设计研究工作台</span><span>单张图像评审 · 证据不足的项目暂不评分</span></footer>
+</main>
+<dialog id="chat-dialog" aria-labelledby="chat-title">
+ <div class="dialog-head"><div><div class="eyebrow">REVIEW CHAT</div><h2 id="chat-title">问评审 Agent</h2></div><button class="close" type="button" id="close-chat" aria-label="关闭问答">×</button></div>
+ <label class="chat-scope">提问范围 <select id="chat-scope"></select></label>
+ <div class="chat-thread" id="chat-thread" role="log" aria-label="对话记录" tabindex="0"></div>
+ <div class="chat-prompts" id="chat-prompts"></div>
+ <form id="chat-form">
+  <label for="chat-question" class="visually-hidden">输入问题</label>
+  <textarea id="chat-question" maxlength="1000" required placeholder="例如，为什么这一项暂不评分？"></textarea>
+  <p id="chat-status" class="form-status" role="status"></p>
+  <button type="submit" id="chat-send" class="primary">发送问题 <span>↗</span></button>
+ </form>
+</dialog>
+<dialog id="upload-dialog">
+ <form id="upload-form">
+  <div class="dialog-head"><div><div class="eyebrow">NEW PRODUCT REVIEW</div><h2>上传产品图片</h2></div><button class="close" type="button" id="close-dialog" aria-label="关闭">×</button></div>
+  <label class="drop" id="drop" for="file"><svg viewBox="0 0 24 24"><path d="M12 19V5m-5 5 5-5 5 5M5 16v4h14v-4"/></svg><b id="file-label">点击选择或拖入图片</b><span>JPG、PNG、WebP · 最大 6 MB</span></label>
+  <input class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" id="file">
+  <img id="upload-preview" hidden alt="待评审产品预览">
+  <label class="brief-label" for="brief">设计说明 <span>选填</span></label><textarea id="brief" maxlength="1500" placeholder="可补充目标用户、使用场景和设计要求，每段换行。"></textarea>
+  <fieldset class="parameters"><legend>产品参数 <span>选填</span></legend><div id="parameter-rows"></div><button type="button" class="text-button" id="add-parameter">＋ 添加参数</button></fieldset>
+  <label class="brief-label" for="test-results">测试结果 <span>选填</span></label><textarea id="test-results" maxlength="3000" placeholder="每段一项，填写测试指标、方法、工况、结果和判定阈值。"></textarea>
+  <p id="upload-status" class="form-status" role="status"></p>
+  <button type="submit" id="submit" class="primary">开始评审 <span>↗</span></button>
+ </form>
+</dialog>
+</body></html>
