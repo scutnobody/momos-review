@@ -31,3 +31,12 @@ export const GROUPS = [
  {id:'use',label:'使用体验专家',dimensions:['utility']},
  {id:'engineering',label:'安全与实现专家',dimensions:['material']}
 ];
+
+export const REVIEW_PERSPECTIVES=[
+ {id:'craft',label:'材料与工艺专家',description:'材料、工艺与制造',groups:['design','engineering'],
+  guidance:'优先说明可见的材质表达、表面处理和装配线索，并列出确认实际材料或工艺所需的资料。'},
+ {id:'experience',label:'使用体验专家',description:'功能与使用',groups:['use'],
+  guidance:'优先说明功能表达、操作入口和使用空间中的可见证据，并指出仍需验证的使用情境。'},
+ {id:'cost',label:'成本与定价专家',description:'成本、价格与量产平衡',groups:['engineering'],
+  guidance:'结合可见部件和装配关系提示潜在成本因素，只在建议中提出需补充的物料清单、工艺、产量或报价资料。不得仅凭图片估算成本、定价或量产能力。'}
+];

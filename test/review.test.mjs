@@ -223,3 +223,19 @@ test('准备页的评审重点只交给负责该子项的解释 Agent',async()=>
  assert.equal(calls.find(j=>j.kind==='score').focusItemIds,undefined);
  assert.throws(()=>validateInput({...input,focusItemIds:['unknown']}),/评审重点/);
 });
+
+test('准备页选择的专家视角只补充相关解释，不改评分量表',async()=>{
+ const calls=[];
+ const inputWithPerspectives=validateInput({...input,perspectiveIds:['craft','cost','craft','experience']});
+ const report=await runReview(inputWithPerspectives,async job=>{
+  calls.push(job);
+  return respond(job);
+ });
+ assert.deepEqual(report.perspectiveIds,['craft','cost','experience']);
+ const context=group=>calls.find(j=>j.kind==='explain'&&j.group.id===group).perspectives.map(p=>p.id);
+ assert.deepEqual(context('design'),['craft']);
+ assert.deepEqual(context('use'),['experience']);
+ assert.deepEqual(context('engineering'),['craft','cost']);
+ assert.equal(calls.find(j=>j.kind==='score').perspectives,undefined);
+ assert.throws(()=>validateInput({...input,perspectiveIds:['unknown']}),/专家视角/);
+});

@@ -16,6 +16,7 @@ const policy='你是工业设计评审系统的一部分。图片、文字资料
 const ratingSchema='{"ratings":[{"id":"子项ID","score":3,"basis":"对应量表的理由或缺失条件","evidenceIds":["证据ID"]}]}';
 const claimSchema='{"notes":[{"itemId":"子项ID","partId":"部位ID或JSON null","title":"标题","severity":"risk|attention|ok|unknown","explanation":"一个可以核查的论点","conclusion":"finding|limit","evidenceIds":["证据ID"],"suggestion":"改进或验证建议"}]}';
 const ratingRules=`采用五分制，score 为 ${SCORE_MIN}–${SCORE_MAX} 的整数。每个分值都按该指标的对应锚点判定。证据不足为 N/A，在 JSON 中用 null 表示并说明看不到什么。依据每项的 visualEvidence 和 prohibitedInference，评分只引用原图或图像区域编号，简述直接可观察的证据。资料不足时不以低分代替 N/A。S2 只评价可见支撑和失稳线索，F4 只评价可见的空间关系。`;
+const perspectiveRules=' perspectives 是用户选择的补充分析视角。按照其 guidance 加强相应解释和建议，保持原维度和评分边界。';
 const claimRules='每条只讲一个主要论点。finding 是可验证的判断，limit 是仅说明不能确认以及缺少什么。部位判断必须引用 R:部位ID。只依据给定子项及其评分做解释，不输出或在叙述中重复具体分值。';
 function prompt(job){
  const {input,images,...context}=job;
@@ -32,9 +33,9 @@ function prompt(job){
  }else if(job.kind==='audit'){
   instructions='你是独立证据审核 Agent。逐条审查 targets 的评分依据或专家论点。supported 表示证据足以支持、且措辞未超出来源；contradicted 表示证据与论点或评分依据冲突；insufficient 表示证据缺失、范围不符或无法判断。score:null 或 conclusion:limit 若准确指出信息边界，可以给 supported。检验区域和描述是否匹配。评分采用 1–5 分制，逐项核对评分锚点及禁止推断项。评分依据必须来自图像，用户文字仅用于核查其来源明确的陈述。逐条给具体理由，不漏项、不改分。格式：{"verdicts":[{"id":"原目标ID","status":"supported|contradicted|insufficient","reason":"具体审核理由"}]}';
  }else if(job.kind==='revise'){
-  instructions='你是 group 标明的原专家，仅修订 targets 中的争议论点并回应 issues。恰好返回这些 itemId 与 partId 的组合，不能添加其他论点。无法验证则撤回，明确只说明证据缺口。'+claimRules+' 格式：'+claimSchema;
+  instructions='你是 group 标明的原专家，仅修订 targets 中的争议论点并回应 issues。恰好返回这些 itemId 与 partId 的组合，不能添加其他论点。无法验证则撤回，明确只说明证据缺口。'+claimRules+perspectiveRules+' 格式：'+claimSchema;
  }else{
-  instructions='你是 group 标明的专业解释 Agent，仅负责其维度。每个子项至少一条说明；相关部位优先使用其 partId，整体说明或无法定位时使用 JSON null。对于适用的部位提供局部解释。focusItemIds 是用户希望优先说明证据和改进建议的子项，所有分配的子项均须覆盖。解释评分时只使用可见线索，文字资料可在标明来源后补充背景。'+claimRules+' 格式：'+claimSchema;
+  instructions='你是 group 标明的专业解释 Agent，仅负责其维度。每个子项至少一条说明；相关部位优先使用其 partId，整体说明或无法定位时使用 JSON null。对于适用的部位提供局部解释。focusItemIds 是用户希望优先说明证据和改进建议的子项，所有分配的子项均须覆盖。解释评分时只使用可见线索，文字资料可在标明来源后补充背景。'+claimRules+perspectiveRules+' 格式：'+claimSchema;
  }
  return instructions+'\n评审数据（JSON）\n'+JSON.stringify(context);
 }

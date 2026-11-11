@@ -1,7 +1,8 @@
-export function setupReviewChat(evidenceList){
- const el=id=>document.getElementById(id);
- const dialog=el('chat-dialog'),scope=el('chat-scope'),thread=el('chat-thread');
- const input=el('chat-question'),send=el('chat-send'),prompts=el('chat-prompts'),status=el('chat-status');
+export function setupReviewChat(root,evidenceList){
+ const find=name=>root.querySelector('[data-chat-'+name+']');
+ const scope=find('scope'),thread=find('thread'),context=find('context');
+ const input=find('input'),send=find('send'),prompts=find('prompts'),status=find('status');
+ const selectedScope=()=>scope?.value??'';
  const histories=new Map();
  let report,available=false,pending=null,error='';
 
@@ -19,8 +20,9 @@ export function setupReviewChat(evidenceList){
 
  function render(){
   const enabled=available&&report?.source==='model';
-  const turns=histories.get(scope.value)??[];
-  const part=report?.parts.find(p=>p.id===scope.value);
+  const key=selectedScope(),turns=histories.get(key)??[];
+  const part=report?.parts.find(p=>p.id===key);
+  if(context)context.textContent=report?.source==='model'?(report.projectName||report.product):'等待评审结果';
   thread.replaceChildren();
   if(!turns.length&&!pending){
    const greeting=document.createElement('p');
@@ -34,7 +36,7 @@ export function setupReviewChat(evidenceList){
   if(pending)thread.append(message('user',pending.question),message('agent','正在查阅评审记录…'));
   thread.scrollTop=thread.scrollHeight;
   input.disabled=send.disabled=!enabled||Boolean(pending);
-  scope.disabled=Boolean(pending);
+  if(scope)scope.disabled=Boolean(pending);
   prompts.replaceChildren();
   if(enabled&&!turns.length&&!pending){
    for(const question of part?['这个部位有哪些证据？','这个部位可以怎么改进？']:['哪些子项需要补充证据？','下一步优先验证什么？']){
@@ -53,26 +55,28 @@ export function setupReviewChat(evidenceList){
   pending?.controller.abort();
   pending=null;error='';input.value='';histories.clear();
   report=next;
-  scope.replaceChildren(new Option('整个产品',''),...report.parts.map(p=>new Option(p.name,p.id)));
+  if(scope)scope.replaceChildren(...report.parts.map(p=>new Option(p.name,p.id)));
   render();
  }
 
- function open(partId=''){
+ function open(partId){
   if(!pending&&scope.value!==partId){
    scope.value=partId;input.value='';error='';
   }
-  dialog.showModal();
+  root.showModal();
   render();
   if(!input.disabled)input.focus();
  }
 
- scope.onchange=()=>{input.value='';error='';render();if(!input.disabled)input.focus();};
- el('close-chat').onclick=()=>dialog.close();
- el('chat-form').onsubmit=async event=>{
+ if(scope){
+  scope.onchange=()=>{input.value='';error='';render();if(!input.disabled)input.focus();};
+  find('close').onclick=()=>root.close();
+ }
+ find('form').onsubmit=async event=>{
   event.preventDefault();
   const question=input.value.trim();
   if(pending||!available||report?.source!=='model'||!question)return;
-  const key=scope.value, turns=histories.get(key)??[];
+  const key=selectedScope(),turns=histories.get(key)??[];
   const history=turns.slice(-6).map(({question,answer})=>({question,answer}));
   const request={question,controller:new AbortController()};
   pending=request;error='';render();
@@ -89,7 +93,7 @@ export function setupReviewChat(evidenceList){
   }finally{
    if(pending===request){
     pending=null;render();
-    if(dialog.open)input.focus();
+    if(root.getClientRects().length)input.focus();
    }
   }
  };

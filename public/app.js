@@ -1,5 +1,5 @@
 import {demo} from './demo.js';
-import {DIMENSIONS,reportScoreMax} from './rubric.mjs';
+import {DIMENSIONS,REVIEW_PERSPECTIVES,reportScoreMax} from './rubric.mjs';
 import {setupReviewChat} from './chat.js';
 const el=id=>document.getElementById(id);
 const create=(tag,className,text)=>{const x=document.createElement(tag);if(className)x.className=className;if(text!==undefined)x.textContent=text;return x;};
@@ -69,15 +69,19 @@ function claimPanel(note,partName){
  article.append(create('p','',note.explanation??'该结论未通过证据审核，已撤回。'));
  if(note.evidence)article.append(create('p','',note.evidence));
  if(note.evidenceIds?.length)article.append(evidenceList(note.evidenceIds));
- if(note.suggestion)article.append(create('h4','','改进建议'),create('p','',note.suggestion));
+ if(note.suggestion){
+  const suggestion=disclosure('改进建议','suggestion-list');
+  suggestion.append(create('p','',note.suggestion));
+  article.append(suggestion);
+ }
  if(note.auditReason)article.append(create('h4','','审核意见'),create('p','',note.auditReason));
  const change=report.trace?.claimRevisions.find(x=>x.id===note.id);
  if(change)article.append(historyPanel(change,false));
  return article;
 }
-let report=demo, imageSrc='/lamp-studio.png', selected='joint', view='points', ready=false, file=null, preview='', busy=false;
-const chat=setupReviewChat(evidenceList);
-el('open-chat').onclick=()=>chat.open();
+let report=demo, imageSrc='/lamp-studio.png', selected='joint', view='points', ready=false, busy=false;
+const overallChat=setupReviewChat(el('overall-chat'),evidenceList);
+const partChat=setupReviewChat(el('chat-dialog'),evidenceList);
 const stage=document.querySelector('.stage'), image=el('product-image');
 function sizeImage(){
  if(!image.naturalWidth||!stage.clientWidth)return;
@@ -104,7 +108,7 @@ function renderDetail(parts){
  if(!active)return;
  const heading=create('div','part-detail-head');
  const ask=create('button','text-button','问这个部位');ask.type='button';
- ask.setAttribute('aria-haspopup','dialog');ask.onclick=()=>chat.open(active.id);
+ ask.setAttribute('aria-haspopup','dialog');ask.onclick=()=>partChat.open(active.id);
  heading.append(create('h3','',active.name),ask);
  target.append(heading);
  for(const note of active.notes)target.append(claimPanel(note,active.name));
@@ -130,7 +134,7 @@ function renderParts(){
   const pin=create('button','pin '+p.severity,n);
   pin.type='button';pin.dataset.part=p.id;pin.title=p.name;pin.setAttribute('aria-label','标注 '+n+' '+p.name);pin.setAttribute('aria-pressed',String(p.id===selected));
   pin.style.left=100*(p.region.x+p.region.w/2)+'%';pin.style.top=100*(p.region.y+p.region.h/2)+'%';
-  pin.onclick=()=>{select(p.id);if(matchMedia('(max-width:1090px)').matches)document.querySelector('.inspector').scrollIntoView({block:'start'});};
+  pin.onclick=()=>{select(p.id);if(matchMedia('(max-width:840px)').matches)document.querySelector('.inspector').scrollIntoView({block:'start'});};
   pins.append(pin);
   const b=create('button','part '+p.severity);
   b.type='button';b.dataset.part=p.id;b.setAttribute('aria-pressed',String(p.id===selected));b.onclick=()=>select(p.id);
@@ -141,9 +145,18 @@ function renderParts(){
 }
 function renderScores(){
  const list=el('score-cards'),max=reportScoreMax(report);list.replaceChildren();
+ const allItems=report.dimensions.flatMap(d=>d.items??[]);
+ const rated=allItems.filter(i=>i.score!==null);
+ const overall=rated.length?Math.round(rated.reduce((sum,i)=>sum+i.score,0)*10/rated.length)/10:null;
+ const focus=rated.reduce((lowest,item)=>!lowest||item.score<lowest.score?item:lowest,null);
+ el('overall-score').textContent=overall===null?'N/A':overall+' / '+max;
+ el('overall-bar').style.width=(100*(overall??0)/max)+'%';
+ el('overall-coverage').textContent=rated.length+' / '+allItems.length+' 项已评分 · 子项等权';
+ el('overall-focus').textContent=!focus?'待补充可见证据':focus.score===max?'已评分项均为满分':itemLabel(focus);
  for(const d of report.dimensions){
   const items=d.items??[];
   const card=create('details','card score-card'),head=create('summary','dimension-summary');
+  card.open=true;
   const name=create('span','dimension-name'),rating=create('span','score-value'+(d.score===null?' na':''),d.score===null?'N/A':String(d.score));
   name.append(create('strong','',d.label),create('small','',items.filter(i=>i.score!==null).length+' / '+items.length+' 项已评分'));
   if(d.score!==null)rating.append(create('small','',' / '+max));
@@ -179,7 +192,7 @@ function render(){
  el('source').textContent=report.source==='demo'?'示例评审':'模型评审';
  el('score-caption').textContent=(report.source==='demo'?'示例评分':'专用模型评分')+' · 满分 '+reportScoreMax(report);
  el('sample').hidden=report.source==='demo';
- chat.setReview(report);renderParts();renderScores();
+ overallChat.setReview(report);partChat.setReview(report);renderParts();renderScores();
 }
 const viewFromUrl=()=>location.hash==='#prepare'?'prepare':'points';
 function setView(next,updateUrl=true){
@@ -206,11 +219,11 @@ el('download').onclick=()=>{
 };
 function status(text,error=false){el('upload-status').textContent=text;el('upload-status').classList.toggle('error',error);}
 async function check(){
- try{const res=await fetch('/api/status');if(!res.ok)throw new Error();const settings=await res.json();ready=settings.configured;chat.setAvailable(settings.chatConfigured);el('connection').classList.toggle('live',ready);el('connection').innerHTML='<i></i> '+(ready?'模型已配置':'示例模式');}
- catch{ready=false;chat.setAvailable(false);el('connection').textContent='服务未连接';}
+ try{const res=await fetch('/api/status');if(!res.ok)throw new Error();const settings=await res.json();ready=settings.configured;overallChat.setAvailable(settings.chatConfigured);partChat.setAvailable(settings.chatConfigured);el('connection').classList.toggle('live',ready);el('connection').innerHTML='<i></i> '+(ready?'模型已配置':'示例模式');}
+ catch{ready=false;overallChat.setAvailable(false);partChat.setAvailable(false);el('connection').textContent='服务未连接';}
 }
 el('upload').onclick=()=>setView('prepare');
-const defaultStatus=()=>ready?'开始评审后，图片和填写的资料将发送给已配置的模型服务。':'可准备资料；发起真实评审前需配置评审所需模型。';
+const defaultStatus=()=>ready?'开始评审后，主图和填写的资料将发送给模型。参考文件保留在本页草稿。':'可准备资料；发起真实评审前需配置评审所需模型。';
 for(const dimension of DIMENSIONS){
  for(const item of dimension.items){
   const label=create('label','focus-option');
@@ -219,25 +232,92 @@ for(const dimension of DIMENSIONS){
   el('focus-items').append(label);
  }
 }
-el('remove-file').onclick=()=>{
- if(busy)return;
- URL.revokeObjectURL(preview);file=null;preview='';
- el('upload-preview').removeAttribute('src');el('upload-preview').hidden=true;
- el('preview-placeholder').hidden=false;el('remove-file').hidden=true;
- el('file-label').textContent='等待添加图片';status(defaultStatus());
+const perspectiveIcons={
+ craft:'m4 17 12-12 3 3L7 20H4zM14 7l3 3',
+ experience:'M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM5 20v-2a7 7 0 0 1 14 0v2',
+ cost:'m12 3 9 5-9 5-9-5zm-9 9 9 5 9-5m-18 4 9 5 9-5'
 };
-function setFile(f){
- if(busy||!f)return;
- if(!['image/png','image/jpeg','image/webp'].includes(f.type)||f.size>6_000_000){status('请选择 6 MB 以内的 JPG、PNG 或 WebP 图片。',true);return;}
- if(preview)URL.revokeObjectURL(preview);
- file=f;preview=URL.createObjectURL(file);
- el('upload-preview').src=preview;el('upload-preview').hidden=false;el('file-label').textContent=file.name;
- el('preview-placeholder').hidden=true;el('remove-file').hidden=false;
- status(defaultStatus());
+for(const perspective of REVIEW_PERSPECTIVES){
+ const label=create('label','expert-card');
+ const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+ icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
+ const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d',perspectiveIcons[perspective.id]);icon.append(path);
+ const text=create('span','expert-text');
+ text.append(create('strong','',perspective.label),create('small','',perspective.description));
+ const option=create('input');option.type='checkbox';option.name='perspectiveIds';option.value=perspective.id;
+ option.checked=perspective.id==='craft';
+ label.append(icon,text,option);el('perspective-options').append(label);
 }
-el('file').onchange=e=>{setFile(e.target.files[0]);e.target.value='';};
-for(const n of ['dragenter','dragover'])el('drop').addEventListener(n,e=>{e.preventDefault();el('drop').classList.add('drag');});
-for(const n of ['dragleave','drop'])el('drop').addEventListener(n,e=>{e.preventDefault();el('drop').classList.remove('drag');if(n==='drop')setFile(e.dataTransfer.files[0]);});
+
+const imageTypes=new Set(['image/png','image/jpeg','image/webp']);
+const materialFiles=[];
+const materialList=el('material-files');
+const materialLimit=6;
+let primaryMaterial=null;
+function renderMaterials(focus){
+ const scroll=materialList.scrollLeft;
+ materialList.replaceChildren();
+ if(!materialFiles.length){
+  materialList.append(create('li','materials-empty','添加后可在这里查看文件'));
+ }
+ let focused;
+ for(const entry of materialFiles){
+  const {file,url}=entry;
+  const card=create('li','file-preview');
+  const media=create(url?'button':'div','file-preview-media');
+  if(url){
+   media.type='button';media.setAttribute('aria-label','将 '+file.name+' 设为评审主图');
+   media.setAttribute('aria-pressed',String(entry===primaryMaterial));
+   const img=create('img');img.src=url;img.alt='';media.append(img);
+   media.onclick=()=>{if(!busy){primaryMaterial=entry;renderMaterials(entry);}};
+   if(entry===focus)focused=media;
+  }else{
+   media.append(create('span','file-icon','PDF'));
+  }
+  const footer=create('div','file-preview-footer');
+  const name=create('span','file-name',file.name);name.title=file.name;
+  const tag=create('small','file-kind',entry===primaryMaterial?'评审主图':url?'参考图':'参考文件');
+  footer.append(name,tag);
+  const remove=create('button','file-remove','×');
+  remove.type='button';remove.setAttribute('aria-label','移除 '+file.name);
+  remove.onclick=()=>{
+   if(busy)return;
+   if(url)URL.revokeObjectURL(url);
+   materialFiles.splice(materialFiles.indexOf(entry),1);
+   if(primaryMaterial===entry)primaryMaterial=materialFiles.find(material=>material.url)??null;
+   renderMaterials();
+   status(defaultStatus());
+  };
+  card.append(media,footer,remove);materialList.append(card);
+ }
+ materialList.scrollLeft=scroll;
+ focused?.focus({preventScroll:true});
+}
+function addMaterials(files,imagesOnly){
+ if(busy||!files?.length)return;
+ let message='';
+ for(const file of files){
+  const image=imageTypes.has(file.type);
+  const pdf=!imagesOnly&&(file.type==='application/pdf'||(!file.type&&/\.pdf$/i.test(file.name)));
+  if(!(image||pdf)||file.size===0||file.size>6_000_000){
+   message=imagesOnly?'请选择 6 MB 以内的 JPG、PNG 或 WebP 图片。':'请选择 6 MB 以内的 JPG、PNG、WebP 或 PDF 文件。';
+   continue;
+  }
+  if(materialFiles.some(entry=>entry.file.name===file.name&&entry.file.size===file.size&&entry.file.lastModified===file.lastModified))continue;
+  if(materialFiles.length>=materialLimit){message='最多添加 '+materialLimit+' 个文件。';break;}
+  const entry={file,url:image?URL.createObjectURL(file):null};
+  materialFiles.push(entry);
+  if(image&&!primaryMaterial)primaryMaterial=entry;
+ }
+ renderMaterials();
+ status(message||defaultStatus(),Boolean(message));
+}
+for(const [id,imagesOnly] of [['file',true],['extra-file',false]]){
+ el(id).onchange=e=>{addMaterials(e.target.files,imagesOnly);e.target.value='';};
+}
+for(const n of ['dragenter','dragover'])el('drop').addEventListener(n,e=>{e.preventDefault();if(!busy)el('drop').classList.add('drag');});
+for(const n of ['dragleave','drop'])el('drop').addEventListener(n,e=>{e.preventDefault();el('drop').classList.remove('drag');if(n==='drop')addMaterials(e.dataTransfer.files,true);});
+renderMaterials();
 async function normalizedImage(f){
  const bitmap=await createImageBitmap(f);
  try{
@@ -263,6 +343,7 @@ function addParameter(){
 el('add-parameter').onclick=addParameter;
 el('upload-form').onsubmit=async e=>{
  e.preventDefault();if(busy)return;
+ const file=primaryMaterial?.file;
  if(!file){status('请先选择产品图片。',true);return;}
  if(!ready){status('尚未配置模型。请参阅 README 并重启本地服务。',true);return;}
  const parameters=[...parameterRows.children].map(row=>({
@@ -274,12 +355,13 @@ el('upload-form').onsubmit=async e=>{
   return;
  }
  const focusItemIds=[...el('focus-items').querySelectorAll('input:checked')].map(input=>input.value);
+ const perspectiveIds=[...el('perspective-options').querySelectorAll('input:checked')].map(input=>input.value);
  busy=true;el('submit').disabled=true;el('prepare-fields').disabled=true;
  status('正在评分、定位部位并核查证据，可能需要几分钟。');
  try{
   const dataUrl=await normalizedImage(file).catch(()=>{throw new Error('无法读取这张图片，请重新导出为 JPG 或 PNG。');});
   const payload={image:dataUrl,projectName:el('project-name').value,brief:el('brief').value,
-   designGoals:el('design-goals').value,focusItemIds,parameters,testResults:el('test-results').value};
+   designGoals:el('design-goals').value,focusItemIds,perspectiveIds,parameters,testResults:el('test-results').value};
   const res=await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'评审失败。');
   report=data;selected=null;el('markers-visible').checked=true;el('pins').hidden=false;

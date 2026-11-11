@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { DIMENSIONS, GROUPS, RUBRIC_VERSION, SCORE_MIN, SCORE_MAX } from './rubric.mjs';
+import { DIMENSIONS, GROUPS, REVIEW_PERSPECTIVES, RUBRIC_VERSION, SCORE_MIN, SCORE_MAX } from './rubric.mjs';
 
+const perspectivesById=new Map(REVIEW_PERSPECTIVES.map(p=>[p.id,p]));
 const items = new Map(DIMENSIONS.flatMap(d=>d.items.map(item=>[item.id,{...item,dimension:d.id}])));
 const str = (v,n=400)=>typeof v==='string'?v.trim().slice(0,n):'';
 const severity = new Set(['risk','attention','ok','unknown']);
@@ -23,8 +24,12 @@ export function validateInput(value){
  if(!Array.isArray(focusItemIds)||focusItemIds.length>items.size||focusItemIds.some(id=>!items.has(id))){
   throw new Error('评审重点包含无效子项。');
  }
+ const perspectiveIds=value.perspectiveIds??[];
+ if(!Array.isArray(perspectiveIds)||perspectiveIds.length>12||perspectiveIds.some(id=>!perspectivesById.has(id))){
+  throw new Error('评审专家视角无效。');
+ }
  return {
-  image,projectName:str(value.projectName,80),brief:str(value.brief,1500),
+  image,perspectiveIds:[...new Set(perspectiveIds)],projectName:str(value.projectName,80),brief:str(value.brief,1500),
   designGoals:str(value.designGoals,1500),focusItemIds:[...new Set(focusItemIds)],testResults:str(value.testResults,3000),
   parameters:parameters.map(p=>({name:str(p.name,80),value:str(p.value,300)}))
  };
@@ -164,6 +169,8 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
  const initialRatings=parseRatings(first?.ratings,[...items.keys()],new Map(baseEvidence.map(e=>[e.id,e])));
  const ratings=new Map(initialRatings.map(r=>[r.id,r]));
  const crops=await prepareCrops(input.image,parts);
+ const perspectives=(input.perspectiveIds??[]).map(id=>perspectivesById.get(id));
+ const perspectivesFor=group=>perspectives.filter(p=>p.groups.includes(group.id)).map(({id,label,guidance})=>({id,label,guidance}));
  const rubricFor=group=>DIMENSIONS.filter(d=>group.dimensions.includes(d.id));
  const partsFor=group=>parts.filter(p=>p.dimensions.some(d=>group.dimensions.includes(d)));
  const modelContext=(partIds,sources=evidence)=>({
@@ -189,7 +196,7 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
   const groupRatings=initialRatings.filter(r=>group.dimensions.includes(items.get(r.id).dimension));
   const relevantParts=new Set(groupParts.map(p=>p.id));
   const focusItemIds=(input.focusItemIds??[]).filter(id=>group.dimensions.includes(items.get(id).dimension));
-  const result=await call('explain',{group,focusItemIds,ratings:groupRatings,parts:groupParts,rubric:rubricFor(group),...modelContext(relevantParts)});
+  const result=await call('explain',{group,focusItemIds,perspectives:perspectivesFor(group),ratings:groupRatings,parts:groupParts,rubric:rubricFor(group),...modelContext(relevantParts)});
   return parseNotes(result?.notes,group,groupParts,byEvidence);
  }))).flat();
  if(parts.some(p=>!initialNotes.some(n=>n.partId===p.id)))throw new Error('部位解释不完整，请重试。');
@@ -218,7 +225,7 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
   const targets=disputedNotes.filter(n=>n.expert===group.id);
   if(!targets.length)return [];
   const relevantRatings=[...new Set(targets.map(n=>n.itemId))].map(id=>ratings.get(id));
-  const raw=await call('revise',{group,targets,issues:auditReasons(targets),ratings:relevantRatings,
+  const raw=await call('revise',{group,targets,perspectives:perspectivesFor(group),issues:auditReasons(targets),ratings:relevantRatings,
    rubric:relevantRatings.map(r=>items.get(r.id)),...evidenceFor([...targets,...relevantRatings])});
   return parseNotes(raw?.notes,group,partsFor(group),byEvidence,targets);
  }))).flat();
@@ -241,7 +248,7 @@ export async function runReview(input,invoke,{prepareCrops=async()=>({}),onProgr
  return {
   id:randomUUID(),createdAt:new Date().toISOString(),source:'model',rubricVersion:RUBRIC_VERSION,scoreMax:SCORE_MAX,
   imageHash:createHash('sha256').update(Buffer.from(input.image.split(',')[1],'base64')).digest('hex'),
-  product:str(first.product,65)||'上传产品',projectName:input.projectName??'',focusItemIds:input.focusItemIds??[],
+  product:str(first.product,65)||'上传产品',projectName:input.projectName??'',focusItemIds:input.focusItemIds??[],perspectiveIds:input.perspectiveIds??[],
   dimensions,parts,localization:{status:localizationStatus},evidence,annotations,
   trace:{initial:{ratings:initialRatings,claims:initialNotes,audits:[...firstAudit.values()]},
    scoreRevisions:revisions(initialRatings,rerated),claimRevisions:revisions(initialNotes,revised)}
